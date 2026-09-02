@@ -2,8 +2,9 @@ import { spawn, spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 
 const children = []
+const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 const run = (command, args, options = {}) => {
-  const child = spawn(command, args, { stdio: 'inherit', shell: process.platform === 'win32', ...options })
+  const child = spawn(command, args, { stdio: 'inherit', ...options })
   children.push(child)
   return child
 }
@@ -25,13 +26,13 @@ if (missingEnv.length || String(process.env.BETTER_AUTH_SECRET || '').length < 3
   process.exit(1)
 }
 
-const migration = spawnSync('npm', ['--prefix', 'backend', 'run', 'db:migrate:local'], { stdio: 'inherit', shell: process.platform === 'win32' })
+const migration = spawnSync(npm, ['--prefix', 'backend', 'run', 'db:migrate:local'], { stdio: 'inherit' })
 if (migration.error) throw migration.error
 if (migration.status !== 0) process.exit(migration.status || 1)
 
 console.log('Starting PetitBakery Worker on http://localhost:8787')
 console.log('Starting PetitBakery Pages preview on http://localhost:8788')
-run('npm', ['--prefix', 'backend', 'run', 'dev'])
+run(npm, ['--prefix', 'backend', 'run', 'dev'])
 run(process.execPath, ['scripts/serve-frontend.mjs'])
 
 const stop = () => {
