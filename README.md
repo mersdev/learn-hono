@@ -55,20 +55,30 @@ GitHub Actions expects every `.env` name as a repository secret: `APP_ORIGIN`, `
 
 The hosted Supabase project uses dashboard-managed email templates. In Authentication → Email → Templates → Confirm signup, set the subject to `Confirm your PetitBakery account` and paste the HTML from [`supabase/templates/confirmation.html`](supabase/templates/confirmation.html). The template uses Supabase's `{{ .ConfirmationURL }}` variable ([email template guide](https://supabase.com/docs/guides/auth/auth-email-templates)). Keep `/verify/` on the redirect allowlist for both localhost and the deployed Pages origin. The app sends new signups there and shows confirmation success or an expired-link recovery action.
 
-## Invite an admin
+## Admin invitations and first admin
 
-For each new admin, invite their email from Supabase Dashboard → Authentication → Users → Invite user. Have them accept the email invite and finish setting up their account. Then, in the Dashboard SQL Editor, promote that account's profile (replace the example email):
+### Bootstrap the first admin
 
-```sql
-update public.profiles
-set role = 'admin'
-where lower(email) = lower('new-admin@example.com')
-returning id, email, role;
+The first admin must be created before anyone can use the admin portal. This one-time endpoint only works when the Supabase project has no Auth users. Set a strong `ADMIN_BOOTSTRAP_SECRET` as a Worker secret, and load the same value into your local shell as `ADMIN_BOOTSTRAP_SECRET` without putting it directly in command history. Then call the API with an unused email:
+
+```sh
+curl --request POST 'https://petitbakery-api.velozz.workers.dev/api/bootstrap/admin' \
+  --header "Authorization: Bearer $ADMIN_BOOTSTRAP_SECRET" \
+  --header 'Content-Type: application/json' \
+  --data '{"email":"owner@example.com"}'
 ```
 
-Confirm the returned row has the intended email and `role = 'admin'`, then have them sign in and open `https://petitbakery.pages.dev/admin/`. If no row is returned, confirm they accepted the invite and that the email is correct. The profile is created from the Auth user with the default `customer` role. Do not use `npm run reset:remote` to add an admin: it deletes every other Auth user and resets remote database data.
+For local development, add the temporary `ADMIN_BOOTSTRAP_SECRET` to `.env`, use `http://localhost:8787/api/bootstrap/admin`, and set `APP_ORIGIN=http://localhost:8788`. The invite redirects to `/verify/`, which must be on Supabase's Auth redirect allowlist. After the API confirms success, remove `ADMIN_BOOTSTRAP_SECRET` from the Worker and unset it in your shell. The first admin must accept the emailed invitation before signing in.
 
-The guarded admin reset keeps or invites `whalo8040@gmail.com`, sets its `profiles.role` to `admin`, and removes every other Auth user. It also resets user-created database entities, replays migrations (which seed the products), and resets customer orders. This is for an explicitly selected disposable hosted project only; it is not part of CI or deployment. The Supabase CLI documents that remote `db reset` drops user-created entities and replays migrations ([CLI `db reset`](https://supabase.com/docs/reference/cli/supabase#supabase-db-reset)).
+If the invite is sent but the API cannot grant the admin role, remove that pending user from Supabase Dashboard → Authentication → Users, then retry the bootstrap request.
+
+### Invite more admins
+
+An existing admin can open `https://petitbakery.pages.dev/admin/`, enter an unused email in the overview's **Invite an admin** form, and click **Invite admin**. The new user accepts the emailed invite, then signs in to use the admin portal. Existing Auth accounts are rejected; ask for an unused email address instead.
+
+### Reset a remote project
+
+The guarded remote reset removes every Auth user, including admins, and resets user-created database entities, replays migrations (which seed the products), and resets customer orders. It does not invite or promote anyone. Afterward, bootstrap the first admin using the steps above. Use this only for an explicitly selected disposable hosted project; it is not part of CI or deployment. The Supabase CLI documents that remote `db reset` drops user-created entities and replays migrations ([CLI `db reset`](https://supabase.com/docs/reference/cli/supabase#supabase-db-reset)).
 
 Preview the target without making requests or changing data:
 

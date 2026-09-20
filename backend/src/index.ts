@@ -5,6 +5,7 @@ import type { AppEnv } from './types'
 import { productRoutes } from './routes/products'
 import { orderRoutes } from './routes/orders'
 import { adminRoutes } from './routes/admin'
+import { bootstrapRoutes } from './routes/bootstrap'
 import { HttpError } from './lib/http'
 
 const app = new Hono<AppEnv>()
@@ -25,6 +26,7 @@ app.get('/health', (c) => c.json({ ok: true, service: 'petitbakery-api' }))
 
 app.route('/api/products', productRoutes)
 app.route('/api/orders', orderRoutes)
+app.route('/api/bootstrap', bootstrapRoutes)
 app.route('/api/admin', adminRoutes)
 
 app.notFound((c) => c.json({ error: 'Not found.' }, 404))

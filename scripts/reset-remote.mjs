@@ -31,7 +31,7 @@ console.log(`Remote reset target: ${projectRef}`)
 console.log(`Supabase URL: ${url.origin}`)
 console.log(`Database host: ${poolerHost}:5432`)
 console.log(`Migrations to replay: ${migrations.join(', ') || '(none)'}`)
-console.log('Auth cleanup: retain or invite whalo8040@gmail.com; delete all other Auth users; set the retained profile role to admin.')
+console.log('Auth cleanup: delete every Auth user; no admin will be retained or invited.')
 if (flag('--dry-run')) {
   console.log('Dry run only. No database or Auth request was made.')
   process.exit(0)
@@ -66,31 +66,12 @@ async function listUsers() {
   }
 }
 
-const adminEmail = 'whalo8040@gmail.com'
-const appOrigin = (process.env.APP_ORIGIN || 'https://petitbakery.pages.dev').replace(/\/$/, '')
-let users = await listUsers()
-let admin = users.find((user) => user.email?.toLowerCase() === adminEmail)
-if (!admin) {
-  const invited = await request(`/invite?redirect_to=${encodeURIComponent(`${appOrigin}/verify/`)}`, { method: 'POST', body: JSON.stringify({ email: adminEmail }) })
-  admin = invited.user || invited
-  if (!admin.id) admin = (await listUsers()).find((user) => user.email?.toLowerCase() === adminEmail)
-  if (!admin?.id) throw new Error('Supabase sent the admin invitation but did not return the new Auth user.')
-}
-
-const profileResponse = await fetch(`${url.origin}/rest/v1/profiles?on_conflict=id`, {
-  method: 'POST',
-  headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=representation' },
-  body: JSON.stringify({ id: admin.id, email: adminEmail, display_name: 'PetitBakery Admin', role: 'admin' })
-})
-const profileText = await profileResponse.text()
-if (!profileResponse.ok) throw new Error(`Could not set admin profile: ${profileText || profileResponse.status}.`)
-
-users = await listUsers()
-for (const user of users) {
-  if (user.id !== admin.id) await request(`/admin/users/${encodeURIComponent(user.id)}`, { method: 'DELETE' })
-}
+const users = await listUsers()
+for (const user of users) await request(`/admin/users/${encodeURIComponent(user.id)}`, { method: 'DELETE' })
 
 const remaining = await listUsers()
-const profiles = await fetch(`${url.origin}/rest/v1/profiles?id=eq.${encodeURIComponent(admin.id)}&select=id,email,role`, { headers }).then((response) => response.json())
-if (remaining.length !== 1 || remaining[0].id !== admin.id || profiles[0]?.role !== 'admin') throw new Error('Reset finished, but the sole-admin verification failed.')
-console.log(`Remote reset complete. ${adminEmail} is the only Auth user and has the admin profile role.`)
+const profileResponse = await fetch(`${url.origin}/rest/v1/profiles?role=eq.admin&select=id`, { headers })
+if (!profileResponse.ok) throw new Error(`Could not verify admin profiles after reset (${profileResponse.status}).`)
+const admins = await profileResponse.json()
+if (remaining.length || admins.length) throw new Error('Reset finished, but Auth users or admin profiles remain.')
+console.log('Remote reset complete. All Auth users were deleted and no admin remains.')

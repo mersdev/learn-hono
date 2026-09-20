@@ -69,12 +69,33 @@ async function load() {
 
   const value = endpoint === 'dashboard' ? data : data[endpoint] || data.orders || []
   const body = endpoint === 'dashboard'
-    ? `<div class="pb-admin-metrics">${Object.entries(data).map(([key, item]) => `<div><b>${escapeHtml(key === 'revenue' ? 'Demo order total' : key)}</b><strong>${key === 'revenue' ? money(item) : escapeHtml(item)}</strong></div>`).join('')}</div><p class="mt-4 text-sm text-[color:var(--pb-muted)]">Order totals are demo records; no money is collected or charged.</p>`
+    ? `<div class="pb-admin-metrics">${Object.entries(data).map(([key, item]) => `<div><b>${escapeHtml(key === 'revenue' ? 'Demo order total' : key)}</b><strong>${key === 'revenue' ? money(item) : escapeHtml(item)}</strong></div>`).join('')}</div><p class="mt-4 text-sm text-[color:var(--pb-muted)]">Order totals are demo records; no money is collected or charged.</p><div class="mt-8 border-t border-[color:var(--pb-line)] pt-6"><h2 class="text-xl font-bold">Invite an admin</h2><p class="mt-1 text-sm text-[color:var(--pb-muted)]">Send an admin invitation to an email that does not already have an account.</p><form id="admin-invite-form" class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"><label class="flex-1 text-sm font-semibold">Email address<input name="email" type="email" required maxlength="254" autocomplete="email" class="pb-field mt-1 w-full"></label><button class="pb-button" type="submit">Invite admin</button><span id="admin-invite-status" role="status" class="text-sm"></span></form></div>`
     : page === 'products' ? productEditors(value)
       : page === 'orders' || page === 'shipping' ? orderEditors(value)
         : readOnlyRows(value, page)
 
   document.body.innerHTML = `<header class="pb-shell"><div class="pb-nav"><a class="pb-brand" href="/"><span>PetitBakery</span></a><a href="/account/">${escapeHtml(user.displayName)}</a></div></header><main class="pb-main"><span class="pb-kicker">Back office</span><h1 class="pb-display" style="font-size:clamp(2.5rem,6vw,5rem)">${labels[page]}</h1><nav class="pb-admin-nav" aria-label="Admin">${nav()}</nav>${page === 'customers' || page === 'payments' || page === 'activity' ? '<p class="mb-4 text-sm text-[color:var(--pb-muted)]">Read-only records. Checkout is a demo and does not collect or charge payment.</p>' : ''}<section class="pb-admin-card" aria-label="${labels[page]}">${body}</section></main>`
+
+  const inviteForm = document.querySelector('#admin-invite-form')
+  inviteForm?.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    const button = inviteForm.querySelector('button[type="submit"]')
+    const status = document.querySelector('#admin-invite-status')
+    const email = new FormData(inviteForm).get('email')
+    setBusy(button, true, 'Sending invite…')
+    status.textContent = ''
+    status.className = 'text-sm'
+    try {
+      const result = await api('/api/admin/invites', { method: 'POST', body: JSON.stringify({ email }) })
+      inviteForm.reset()
+      status.textContent = `Invitation sent to ${result.email}.`
+    } catch (error) {
+      status.textContent = error.message
+      status.className = 'text-sm text-red-700'
+    } finally {
+      setBusy(button, false)
+    }
+  })
 
   document.querySelectorAll('form[data-product-id]').forEach((form) => form.addEventListener('submit', async (event) => {
     event.preventDefault()

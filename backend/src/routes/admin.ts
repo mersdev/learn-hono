@@ -2,8 +2,16 @@ import { Hono } from 'hono'
 import type { AppEnv } from '../types'
 import { HttpError, readJson, safeText } from '../lib/http'
 import { requireAdmin, supabase } from '../lib/supabase'
+import { inviteAdmin, listAuthUsers, readInviteEmail } from '../lib/admin-invites'
 export const adminRoutes = new Hono<AppEnv>()
 adminRoutes.use('*', async (c, next) => { await requireAdmin(c); await next() })
+adminRoutes.post('/invites', async (c) => {
+  const email = await readInviteEmail(c)
+  const users = await listAuthUsers(c)
+  if (users.some((user) => user.email?.toLowerCase() === email)) throw new HttpError(409, 'That email already has an Auth account.')
+  await inviteAdmin(c, email)
+  return c.json({ email, message: 'Admin invitation sent.' }, 201)
+})
 adminRoutes.get('/dashboard', async (c) => {
   const [products, orders, customers, payments] = await Promise.all([supabase(c, '/rest/v1/products?select=id,stock'), supabase(c, '/rest/v1/orders?select=id,total_cents'), supabase(c, '/rest/v1/profiles?select=id&role=eq.customer'), supabase(c, '/rest/v1/payments?select=id')])
   return c.json({ products: products.length, lowStock: products.filter((p: any) => p.stock < 5).length, orders: orders.length, revenue: orders.reduce((n: number, o: any) => n + o.total_cents, 0), customers: customers.length, payments: payments.length })
