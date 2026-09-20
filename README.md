@@ -55,6 +55,19 @@ GitHub Actions expects every `.env` name as a repository secret: `APP_ORIGIN`, `
 
 The hosted Supabase project uses dashboard-managed email templates. In Authentication → Email → Templates → Confirm signup, set the subject to `Confirm your PetitBakery account` and paste the HTML from [`supabase/templates/confirmation.html`](supabase/templates/confirmation.html). The template uses Supabase's `{{ .ConfirmationURL }}` variable ([email template guide](https://supabase.com/docs/guides/auth/auth-email-templates)). Keep `/verify/` on the redirect allowlist for both localhost and the deployed Pages origin. The app sends new signups there and shows confirmation success or an expired-link recovery action.
 
+## Invite an admin
+
+For each new admin, invite their email from Supabase Dashboard → Authentication → Users → Invite user. Have them accept the email invite and finish setting up their account. Then, in the Dashboard SQL Editor, promote that account's profile (replace the example email):
+
+```sql
+update public.profiles
+set role = 'admin'
+where lower(email) = lower('new-admin@example.com')
+returning id, email, role;
+```
+
+Confirm the returned row has the intended email and `role = 'admin'`, then have them sign in and open `https://petitbakery.pages.dev/admin/`. If no row is returned, confirm they accepted the invite and that the email is correct. The profile is created from the Auth user with the default `customer` role. Do not use `npm run reset:remote` to add an admin: it deletes every other Auth user and resets remote database data.
+
 The guarded admin reset keeps or invites `whalo8040@gmail.com`, sets its `profiles.role` to `admin`, and removes every other Auth user. It also resets user-created database entities, replays migrations (which seed the products), and resets customer orders. This is for an explicitly selected disposable hosted project only; it is not part of CI or deployment. The Supabase CLI documents that remote `db reset` drops user-created entities and replays migrations ([CLI `db reset`](https://supabase.com/docs/reference/cli/supabase#supabase-db-reset)).
 
 Preview the target without making requests or changing data:
