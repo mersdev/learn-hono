@@ -68,9 +68,9 @@ The guarded remote reset removes every Auth user, including admins, and resets u
 Preview the target without making requests or changing data:
 
 ```sh
-npm run reset:remote -- --remote --project-ref YOUR_PROJECT_REF --dry-run
+npm run reset:remote -- --remote --dry-run
 ```
 
-For an actual reset, omit `--dry-run`. Review the printed project URL and database host, then type the exact project reference when prompted. The command also requires `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `POSTGRESQL_DB_PASSWORD`, and `SUPABASE_DB_POOLER_HOST` in `.env`; it refuses CI and mismatched project references. A successful reset leaves one Auth user: `petit@admin.com`, auto-confirmed and promoted to admin. The generated password is printed once in the interactive terminal, so save it securely. Do not add this command to an Action or deployment workflow.
+For an actual reset, run `npm run reset:remote -- --remote`. The project reference is read from `SUPABASE_URL` in `.env`; you can pass `--project-ref` as an extra check if needed. Review the printed project URL and database host, then type the exact project reference when prompted. The command also requires `SUPABASE_SECRET_KEY`, `POSTGRESQL_DB_PASSWORD`, and `SUPABASE_DB_POOLER_HOST` in `.env`; it refuses CI and a supplied project reference that does not match the URL. A successful reset leaves one Auth user: `petit@admin.com`, auto-confirmed and promoted to admin. The generated password is printed once in the interactive terminal, so save it securely. Do not add this command to an Action or deployment workflow.
 
 Checkout creates an order and demo payment record, but does not collect payment details or charge money.

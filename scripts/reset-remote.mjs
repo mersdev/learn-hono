@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto'
 
 const args = process.argv.slice(2)
 const flag = (name) => args.includes(name)
-const option = (name) => args[args.indexOf(name) + 1]
+const option = (name) => { const index = args.indexOf(name); return index < 0 ? undefined : args[index + 1] }
 const fail = (message) => { console.error(`Reset refused: ${message}`); process.exit(1) }
 const adminEmail = 'petit@admin.com'
 
@@ -13,18 +13,20 @@ if (args.some((arg) => !['--remote', '--dry-run', '--project-ref'].includes(arg)
 if (!flag('--remote')) fail('pass --remote to confirm this command targets a hosted project.')
 if (/^(true|1)$/i.test(process.env.CI || '')) fail('remote reset is a manual operation and cannot run in CI.')
 
-const projectRef = option('--project-ref')
 const projectUrl = process.env.SUPABASE_URL
 const secretKey = process.env.SUPABASE_SECRET_KEY
 const databasePassword = process.env.POSTGRESQL_DB_PASSWORD
 const poolerHost = process.env.SUPABASE_DB_POOLER_HOST
-if (!projectRef || !/^[a-z0-9-]+$/.test(projectRef)) fail('provide --project-ref with the hosted project reference.')
+const suppliedProjectRef = option('--project-ref')
+if (flag('--project-ref') && !suppliedProjectRef) fail('provide a value after --project-ref.')
 if (!projectUrl || !secretKey || !databasePassword || !poolerHost) fail('set SUPABASE_URL, SUPABASE_SECRET_KEY, POSTGRESQL_DB_PASSWORD, and SUPABASE_DB_POOLER_HOST.')
 
 let url
 try { url = new URL(projectUrl) } catch { fail('SUPABASE_URL must be a valid project URL.') }
 const urlRef = url.hostname.endsWith('.supabase.co') ? url.hostname.split('.')[0] : ''
-if (url.protocol !== 'https:' || urlRef !== projectRef) fail('--project-ref must exactly match the HTTPS SUPABASE_URL project reference.')
+if (url.protocol !== 'https:' || !/^[a-z0-9-]+$/.test(urlRef)) fail('SUPABASE_URL must be an HTTPS Supabase project URL.')
+const projectRef = urlRef
+if (suppliedProjectRef && suppliedProjectRef !== projectRef) fail('--project-ref must match the SUPABASE_URL project reference.')
 if (!/^[a-z0-9.-]+$/.test(poolerHost) || poolerHost.includes('..')) fail('SUPABASE_DB_POOLER_HOST is invalid.')
 
 const migrations = (await readdir('supabase/migrations')).filter((file) => file.endsWith('.sql')).sort()
