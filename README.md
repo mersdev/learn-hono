@@ -8,7 +8,7 @@ PetitBakery is a Cloudflare Pages storefront with Supabase Auth/Postgres and a H
 2. Add these Auth redirect URLs: `http://localhost:8788/verify/`, `http://localhost:8788/reset-password/`, `https://petitbakery.pages.dev/verify/`, and `https://petitbakery.pages.dev/reset-password/`. Signup and password-reset redirects must be on this allowlist ([Supabase redirect URL guide](https://supabase.com/docs/guides/auth/redirect-urls)).
 3. Copy `.env.example` to `.env` and fill in the values. Do not commit `.env`. The browser config at `frontend/js/config.js` also needs the `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` values; never put `SUPABASE_SECRET_KEY` there.
 4. Apply the schema and seed products with the Supabase CLI. Use the database connection string and percent-encode special characters in its password: `npx supabase db push --db-url "postgresql://postgres:ENCODED_PASSWORD@db.PROJECT_REF.supabase.co:5432/postgres"`.
-5. Put `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in the Worker secret store. The production storefront is `https://petitbakery.pages.dev` and its API is `https://petitbakery-api.velozz.workers.dev`; the deployment workflow writes the browser-safe URL and publishable key configuration.
+5. GitHub Actions uses repository secrets as the source of truth for production. The deployment workflow syncs the values required at request time into the Worker runtime; do not enter them manually in the Cloudflare dashboard. The production storefront is `https://petitbakery.pages.dev` and its API is `https://petitbakery-api.velozz.workers.dev`.
 
 ## Local development commands
 
@@ -49,7 +49,7 @@ Create `.env` once with `cp .env.example .env` (PowerShell: `Copy-Item .env.exam
 
 To run either server separately, use `npm run dev --prefix backend` for the API or `node scripts/serve-frontend.mjs` for the storefront. Use these instead of `npm start` when you only need one server.
 
-GitHub Actions expects every `.env` name as a repository secret: `APP_ORIGIN`, `CORS_ORIGIN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_JWKS_URL`, and `POSTGRESQL_DB_PASSWORD`. Also set `SUPABASE_DB_POOLER_HOST` to the hostname from Supabase Dashboard → Connect → Session pooler; GitHub-hosted runners need this IPv4-compatible endpoint for migrations. Pull requests only run checks; pushes to `main` and manual dispatches deploy production.
+Add the required production values as GitHub repository secrets: `APP_ORIGIN`, `CORS_ORIGIN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_JWKS_URL`, `POSTGRESQL_DB_PASSWORD`, and `SUPABASE_DB_POOLER_HOST` (the hostname from Supabase Dashboard → Connect → Session pooler; GitHub-hosted runners need this IPv4-compatible endpoint for migrations). `ADMIN_BOOTSTRAP_SECRET` is optional and only needed while enabling first-admin bootstrap. The Worker cannot read GitHub Secrets directly, so the deploy workflow copies runtime values into the Worker; when `ADMIN_BOOTSTRAP_SECRET` is absent from GitHub, the workflow removes any previous Worker copy. Pull requests only run checks; pushes to `main` and manual dispatches deploy production.
 
 ## Signup confirmation email
 
@@ -59,7 +59,14 @@ The hosted Supabase project uses dashboard-managed email templates. In Authentic
 
 ### Bootstrap the first admin
 
-The first admin must be created before anyone can use the admin portal. This one-time endpoint only works when the Supabase project has no Auth users. Set a strong `ADMIN_BOOTSTRAP_SECRET` as a Worker secret, and load the same value into your local shell as `ADMIN_BOOTSTRAP_SECRET` without putting it directly in command history. Then call the API with an unused email:
+The first admin must be created before anyone can use the admin portal. This endpoint only works when the Supabase project has no Auth users. Generate a long random token (for example, `openssl rand -hex 32`) and add it as the `ADMIN_BOOTSTRAP_SECRET` GitHub repository secret under **Settings → Secrets and variables → Actions**. Run the `Verify and deploy PetitBakery backend` workflow so it syncs the token to the Worker runtime. The Worker needs the token at runtime to authorize this request; you do not need to enter it manually in Cloudflare. Then call the API with an unused email:
+
+Keep the generated token available for the request. Load it into your shell without adding it to command history (the input is hidden):
+
+```sh
+read -s ADMIN_BOOTSTRAP_SECRET
+export ADMIN_BOOTSTRAP_SECRET
+```
 
 ```sh
 curl --request POST 'https://petitbakery-api.velozz.workers.dev/api/bootstrap/admin' \
@@ -68,7 +75,7 @@ curl --request POST 'https://petitbakery-api.velozz.workers.dev/api/bootstrap/ad
   --data '{"email":"owner@example.com"}'
 ```
 
-For local development, add the temporary `ADMIN_BOOTSTRAP_SECRET` to `.env`, use `http://localhost:8787/api/bootstrap/admin`, and set `APP_ORIGIN=http://localhost:8788`. The invite redirects to `/verify/`, which must be on Supabase's Auth redirect allowlist. After the API confirms success, remove `ADMIN_BOOTSTRAP_SECRET` from the Worker and unset it in your shell. The first admin must accept the emailed invitation before signing in.
+For local development, set `ADMIN_BOOTSTRAP_SECRET` in `.env`, use `http://localhost:8787/api/bootstrap/admin`, and set `APP_ORIGIN=http://localhost:8788`. The invite redirects to `/verify/`, which must be on Supabase's Auth redirect allowlist. After the API confirms success, delete `ADMIN_BOOTSTRAP_SECRET` from GitHub repository secrets and run the deploy workflow again; it removes the Worker runtime copy. Keep the value out of source control and logs. The first admin must accept the emailed invitation before signing in.
 
 If the invite is sent but the API cannot grant the admin role, remove that pending user from Supabase Dashboard → Authentication → Users, then retry the bootstrap request.
 
