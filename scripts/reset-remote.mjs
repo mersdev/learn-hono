@@ -1,11 +1,13 @@
 import { readdir } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
 import { createInterface } from 'node:readline/promises'
+import { randomBytes } from 'node:crypto'
 
 const args = process.argv.slice(2)
 const flag = (name) => args.includes(name)
 const option = (name) => args[args.indexOf(name) + 1]
 const fail = (message) => { console.error(`Reset refused: ${message}`); process.exit(1) }
+const adminEmail = 'petit@admin.com'
 
 if (args.some((arg) => !['--remote', '--dry-run', '--project-ref'].includes(arg) && arg !== option('--project-ref'))) fail('unknown argument.')
 if (!flag('--remote')) fail('pass --remote to confirm this command targets a hosted project.')
@@ -31,7 +33,8 @@ console.log(`Remote reset target: ${projectRef}`)
 console.log(`Supabase URL: ${url.origin}`)
 console.log(`Database host: ${poolerHost}:5432`)
 console.log(`Migrations to replay: ${migrations.join(', ') || '(none)'}`)
-console.log('Auth cleanup: delete every Auth user; no admin will be retained or invited.')
+console.log(`Auth cleanup: delete every Auth user, then create one auto-confirmed admin (${adminEmail}).`)
+console.log('The random admin password will be printed once after verification.')
 if (flag('--dry-run')) {
   console.log('Dry run only. No database or Auth request was made.')
   process.exit(0)
@@ -69,9 +72,44 @@ async function listUsers() {
 const users = await listUsers()
 for (const user of users) await request(`/admin/users/${encodeURIComponent(user.id)}`, { method: 'DELETE' })
 
-const remaining = await listUsers()
-const profileResponse = await fetch(`${url.origin}/rest/v1/profiles?role=eq.admin&select=id`, { headers })
-if (!profileResponse.ok) throw new Error(`Could not verify admin profiles after reset (${profileResponse.status}).`)
-const admins = await profileResponse.json()
-if (remaining.length || admins.length) throw new Error('Reset finished, but Auth users or admin profiles remain.')
-console.log('Remote reset complete. All Auth users were deleted and no admin remains.')
+const password = randomBytes(32).toString('base64url')
+let admin
+try {
+  const created = await request('/admin/users', {
+    method: 'POST',
+    body: JSON.stringify({ email: adminEmail, password, email_confirm: true })
+  })
+  admin = created?.user || created
+  if (!admin?.id) throw new Error('Supabase did not return the created Auth user.')
+
+  const promoted = await fetch(`${url.origin}/rest/v1/profiles?id=eq.${encodeURIComponent(admin.id)}&select=id,email,role`, {
+    method: 'PATCH',
+    headers: { ...headers, Prefer: 'return=representation' },
+    body: JSON.stringify({ role: 'admin' })
+  })
+  if (!promoted.ok) throw new Error(`Could not promote the new profile (${promoted.status}).`)
+  const profiles = await promoted.json()
+  if (profiles.length !== 1 || profiles[0].id !== admin.id || profiles[0].role !== 'admin') throw new Error('The new profile was not promoted to admin.')
+
+  const remaining = await listUsers()
+  const profileResponse = await fetch(`${url.origin}/rest/v1/profiles?role=eq.admin&select=id,email,role`, { headers })
+  if (!profileResponse.ok) throw new Error(`Could not verify admin profiles after reset (${profileResponse.status}).`)
+  const admins = await profileResponse.json()
+  const confirmed = remaining[0]?.email_confirmed_at || remaining[0]?.confirmed_at
+  if (remaining.length !== 1 || remaining[0].id !== admin.id || remaining[0].email?.toLowerCase() !== adminEmail || !confirmed || admins.length !== 1 || admins[0].id !== admin.id || admins[0].email?.toLowerCase() !== adminEmail || admins[0].role !== 'admin') {
+    throw new Error('Reset finished, but the only Auth user is not the confirmed admin with the expected profile.')
+  }
+} catch (error) {
+  let cleanupErrors = ''
+  try {
+    const createdUsers = admin?.id ? [admin] : (await listUsers()).filter((user) => user.email?.toLowerCase() === adminEmail)
+    for (const user of createdUsers) await request(`/admin/users/${encodeURIComponent(user.id)}`, { method: 'DELETE' })
+  } catch (cleanupError) {
+    cleanupErrors = ` Cleanup failed: ${cleanupError.message}`
+  }
+  throw new Error(`First-admin creation failed: ${error.message}.${cleanupErrors}`)
+}
+
+console.log('Remote reset complete. The only Auth user is the auto-confirmed admin.')
+console.log(`Admin email: ${adminEmail}`)
+console.log(`Admin password (save it securely; shown once): ${password}`)

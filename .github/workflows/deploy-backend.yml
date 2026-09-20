@@ -29,7 +29,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       APP_ORIGIN: ${{ secrets.APP_ORIGIN }}
-      ADMIN_BOOTSTRAP_SECRET: ${{ secrets.ADMIN_BOOTSTRAP_SECRET }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CORS_ORIGIN: ${{ secrets.CORS_ORIGIN }}
@@ -58,13 +57,9 @@ jobs:
         run: |
           npx wrangler secret put SUPABASE_URL <<< "$SUPABASE_URL"
           npx wrangler secret put SUPABASE_SECRET_KEY <<< "$SUPABASE_SECRET_KEY"
-          if [ -n "$ADMIN_BOOTSTRAP_SECRET" ]; then
-            npx wrangler secret put ADMIN_BOOTSTRAP_SECRET <<< "$ADMIN_BOOTSTRAP_SECRET"
-          else
-            worker_secrets_json="$(npx wrangler secret list --format json)"
-            if printf '%s' "$worker_secrets_json" | node -e "let data='';process.stdin.on('data',chunk=>data+=chunk).on('end',()=>{const secrets=JSON.parse(data);process.exit(secrets.some(secret=>secret.name==='ADMIN_BOOTSTRAP_SECRET')?0:1)})"; then
-              npx wrangler secret bulk <<< '{"ADMIN_BOOTSTRAP_SECRET":null}'
-            fi
+          worker_secrets_json="$(npx wrangler secret list --format json)"
+          if printf '%s' "$worker_secrets_json" | node -e "let data='';process.stdin.on('data',chunk=>data+=chunk).on('end',()=>{const secrets=JSON.parse(data);process.exit(secrets.some(secret=>secret.name==='ADMIN_BOOTSTRAP_SECRET')?0:1)})"; then
+            npx wrangler secret bulk <<< '{"ADMIN_BOOTSTRAP_SECRET":null}'
           fi
       - name: Deploy Worker with secrets
         run: npm run deploy --prefix backend
