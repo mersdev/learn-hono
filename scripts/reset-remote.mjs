@@ -16,10 +16,9 @@ if (/^(true|1)$/i.test(process.env.CI || '')) fail('remote reset is a manual ope
 const projectUrl = process.env.SUPABASE_URL
 const secretKey = process.env.SUPABASE_SECRET_KEY
 const databasePassword = process.env.POSTGRESQL_DB_PASSWORD
-const poolerHost = process.env.SUPABASE_DB_POOLER_HOST
 const suppliedProjectRef = option('--project-ref')
 if (flag('--project-ref') && !suppliedProjectRef) fail('provide a value after --project-ref.')
-if (!projectUrl || !secretKey || !databasePassword || !poolerHost) fail('set SUPABASE_URL, SUPABASE_SECRET_KEY, POSTGRESQL_DB_PASSWORD, and SUPABASE_DB_POOLER_HOST.')
+if (!projectUrl || !secretKey || !databasePassword) fail('set SUPABASE_URL, SUPABASE_SECRET_KEY, and POSTGRESQL_DB_PASSWORD.')
 
 let url
 try { url = new URL(projectUrl) } catch { fail('SUPABASE_URL must be a valid project URL.') }
@@ -27,13 +26,13 @@ const urlRef = url.hostname.endsWith('.supabase.co') ? url.hostname.split('.')[0
 if (url.protocol !== 'https:' || !/^[a-z0-9-]+$/.test(urlRef)) fail('SUPABASE_URL must be an HTTPS Supabase project URL.')
 const projectRef = urlRef
 if (suppliedProjectRef && suppliedProjectRef !== projectRef) fail('--project-ref must match the SUPABASE_URL project reference.')
-if (!/^[a-z0-9.-]+$/.test(poolerHost) || poolerHost.includes('..')) fail('SUPABASE_DB_POOLER_HOST is invalid.')
 
 const migrations = (await readdir('supabase/migrations')).filter((file) => file.endsWith('.sql')).sort()
-const databaseUrl = `postgresql://postgres.${projectRef}:${encodeURIComponent(databasePassword)}@${poolerHost}:5432/postgres`
+const databaseHost = `db.${projectRef}.supabase.co`
+const databaseUrl = `postgresql://postgres:${encodeURIComponent(databasePassword)}@${databaseHost}:5432/postgres`
 console.log(`Remote reset target: ${projectRef}`)
 console.log(`Supabase URL: ${url.origin}`)
-console.log(`Database host: ${poolerHost}:5432`)
+console.log(`Database host (derived): ${databaseHost}:5432`)
 console.log(`Migrations to replay: ${migrations.join(', ') || '(none)'}`)
 console.log(`Auth cleanup: delete every Auth user, then create one auto-confirmed admin (${adminEmail}).`)
 console.log('The random admin password will be printed once after verification.')
